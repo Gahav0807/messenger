@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"encoding/json"
 
 	"my-go-project/pkg/core"
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
+	"github.com/google/uuid"
 )
 
 var logger *zap.Logger
@@ -25,9 +27,9 @@ func NewAuthHandler() *AuthHandler {
 	}
 }
 
-// Метод для регистрации пользователя
+// Метод для регистрации пользователя.
 // Получаем данные передаваемые в запросе, проверяем:
-// Есть ли пользователь с таким же именем.Если есть - просим пользователя изменить ник
+// Есть ли пользователь с таким же именем.Если есть - просим пользователя изменить ник.
 // Нету - записываем в бд и оповещаем об успехе
 func (h *AuthHandler) Registration(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -37,7 +39,7 @@ func (h *AuthHandler) Registration(w http.ResponseWriter, r *http.Request) {
 
 	logger.Info("Получаем инфу про пользователя из бд")
 
-	query := fmt.Sprintf("SELECT * FROM Users WHERE username = '%s'", userName)
+	query := fmt.Sprintf("SELECT * FROM users WHERE username = '%s'", userName)
 	result, err := h.data.GetData(ctx, query)
 	if err != nil {
 		logger.Error("Ошибка при получении информации о пользователе", zap.Error(err))
@@ -55,17 +57,45 @@ func (h *AuthHandler) Registration(w http.ResponseWriter, r *http.Request) {
     createdAt := currentTime.Format("02.01.2006")
 
 	logger.Info("Пользователя с таким именем еще нет, заносим в бд")
-	insertQuery := fmt.Sprintf("INSERT INTO Users (username, password, created_at) VALUES ('%s', '%s', '%s')", userName, password, createdAt)
+	insertQuery := fmt.Sprintf("INSERT INTO users (username, password, created_at) VALUES ('%s', '%s', '%s')", userName, password, createdAt)
 	err = h.data.SetData(ctx, insertQuery)
 	if err != nil {
 		logger.Error("Ошибка при добавлении нового пользователя в бд", zap.Error(err))
 		http.Error(w, "Database insert error", http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+
+	logger.Info("Пользователь добавлен, забираем его уникальный токен и отдаем")
+	tokenQuery := fmt.Sprintf("SELECT token FROM users WHERE username ='%s'", userName)
+	tokenResult, err := h.data.GetData(ctx, tokenQuery)
+	if err != nil {
+		logger.Error("Ошибка при взятии токена", zap.Error(err))
+		http.Error(w, "Database insert error", http.StatusInternalServerError)
+		return
+	}
+
+	user := tokenResult[0]
+
+	// Преобразование токена из типа [16]uint8 в строку
+    tokenArray, ok := user["token"].([16]uint8)
+    if !ok {
+        logger.Error("Ошибка при преобразовании токена")
+        http.Error(w, "Token conversion error", http.StatusInternalServerError)
+        return
+    }
+    token := uuid.UUID(tokenArray).String()
+
+    // Возвращаем токен клиенту
+    w.WriteHeader(http.StatusOK)
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
 
 
+// Метод для авторизации пользователя.
+// Получаем данные передаваемые в запросе, проверяем:
+// Есть ли пользователь с таким же именем.Если есть - проверяем корректность пароля.
+// Нету - сообщение об ошибке
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
     ctx := r.Context()
     vars := mux.Vars(r)
@@ -74,7 +104,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
     logger.Info("Получаем информацию о пользователе из базы данных")
 
-    query := fmt.Sprintf("SELECT * FROM Users WHERE username = '%s'", userName)
+    query := fmt.Sprintf("SELECT username, password, token FROM users WHERE username = '%s'", userName)
     result, err := h.data.GetData(ctx, query)
     if err != nil {
         logger.Error("Ошибка при получении информации о пользователе", zap.Error(err))
@@ -97,6 +127,19 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
     logger.Info("Пользователь успешно аутентифицирован")
 
-    // Здесь можно сгенерировать и отправить токен для аутентификации пользователя
+    // Преобразование токена из типа [16]uint8 в строку
+    tokenArray, ok := user["token"].([16]uint8)
+    if !ok {
+        logger.Error("Ошибка при преобразовании токена")
+        http.Error(w, "Token conversion error", http.StatusInternalServerError)
+        return
+    }
+    token := uuid.UUID(tokenArray).String()
+
+    // Возвращаем токен клиенту
     w.WriteHeader(http.StatusOK)
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(map[string]string{"token": token})
+
 }
+

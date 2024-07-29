@@ -9,20 +9,24 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const router = useRouter();
 
-  function handleLogin() {
-    fetch(`http://localhost:9000/tryAuth/${username}/${password}`)
-      .then((response) => {
-        if (response.ok) {
-          toast.success("Успешная авторизация!");
-        } else {
-          toast.error("Ошибка авторизации. Проверьте имя пользователя и пароль.");
-        }
-      })
-      .catch((error) => {
-        toast.error("Произошла ошибка при попытке авторизации.");
-        console.error("Ошибка:", error);
-      });
+  async function handleLogin() {
+    try {
+      const response = await fetch(`http://localhost:9000/tryAuth/${username}/${password}`);
+  
+      if (response.ok) {
+        const data = await response.json();
+        localStorage.setItem('messenger_token', data.token);      
+        toast.success("Успешная авторизация!");
+        
+      } else {
+        toast.error("Ошибка авторизации. Проверьте имя пользователя и пароль.");
+      }
+    } catch (error) {
+      toast.error("Произошла ошибка при попытке авторизации.");
+      console.error("Ошибка:", error);
+    }
   }
+  
 
   return (
     <div>

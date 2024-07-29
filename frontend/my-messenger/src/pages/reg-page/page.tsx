@@ -9,19 +9,22 @@ export default function RegPage() {
   const [password, setPassword] = useState("");
   const router = useRouter();
 
-  function handleRegister() {
-    fetch(`http://localhost:9000/tryRegister/${username}/${password}`)
-      .then((response) => {
-        if (response.ok) {
-          toast.success("Регистрация прошла успешно!");
-        } else {
-          toast.error("Ошибка регистрации. Пользователь с таким именем уже существует");
-        }
-      })
-      .catch((error) => {
-        toast.error("Произошла ошибка при попытке регистрации.");
-        console.error("Ошибка:", error);
-      });
+  async function handleRegister() {
+    try {
+      const response = await fetch(`http://localhost:9000/tryRegister/${username}/${password}`);
+  
+      if (response.ok) {
+        const data = await response.json();
+        localStorage.setItem('messenger_token', data.token);      
+        toast.success("Регистрация прошла успешно!");
+        
+      } else {
+        toast.error("Ошибка регистрации. Пользователь с таким ником уже существует.");
+      }
+    } catch (error) {
+      toast.error("Произошла ошибка при попытке регистрации.");
+      console.error("Ошибка:", error);
+    }
   }
 
   return (
